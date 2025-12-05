@@ -1,0 +1,37 @@
+---
+interface Props {
+  job: {
+    id: string;              // i
+    title: string;           // t
+    company: string;         // c
+    location: string;        // l
+    province: string;        // p
+    degree?: string;         // d
+    quota: number;           // q
+    registered?: number;     // r (number of applicants)
+    deadline?: string;       // dl (kept for backward compatibility)
+  };
+}
+
+const { job } = Astro.props;
+const applicants = job.registered || 0;
+---
+
+<a href={`/jobs/${job.id}`} class="job-link">
+  <div class="job-card">
+    <h3 class="job-title">{job.title}</h3>
+    <div class="job-company">{job.company}</div>
+    <div class="job-location">📍 {job.location}, {job.province}</div>
+    {job.degree && <div class="job-degree">🎓 {job.degree}</div>}
+    <div class="job-meta">
+      <span>👥 {applicants} / {job.quota} applying</span>
+    </div>
+  </div>
+</a>
+
+<style>
+  .job-link {
+    text-decoration: none;
+    color: inherit;
+  }
+</style>

@@ -1,0 +1,144 @@
+---
+import Layout from '../../layouts/Layout.astro';
+import fs from 'fs';
+import path from 'path';
+
+export async function getStaticPaths() {
+  try {
+    // 1. Read the Index File from disk
+    const indexPath = path.join(process.cwd(), 'public/data/jobs-index.json');
+    const indexContent = fs.readFileSync(indexPath, 'utf-8');
+    const jobsIndex = JSON.parse(indexContent);
+
+    // 2. Generate a path for every job in the index
+    return jobsIndex.map((job) => {
+      let jobData = null;
+      try {
+        // 3. Read the specific Job Details file for this ID
+        const jobDetailPath = path.join(process.cwd(), `public/data/jobs/${job.i}.json`);
+        
+        if (fs.existsSync(jobDetailPath)) {
+          const detailContent = fs.readFileSync(jobDetailPath, 'utf-8');
+          jobData = JSON.parse(detailContent);
+        }
+      } catch (e) {
+        console.error(`Error reading job ${job.i}:`, e);
+      }
+
+      // 4. Pass the data to the page via props
+      return {
+        params: { id: job.i },
+        props: { jobData } 
+      };
+    });
+  } catch (error) {
+    console.error('Error in getStaticPaths:', error);
+    return [];
+  }
+}
+
+// Get the data passed from getStaticPaths
+const { jobData } = Astro.props;
+---
+
+<Layout title={`${jobData?.job_title || 'Job Details'} - MagangHub v2`}>
+  {jobData ? (
+    <div style="max-width: 800px; margin: 0 auto;">
+      <a href="/" style="color: var(--primary); text-decoration: none; margin-bottom: 1rem; display: inline-block;">
+        ← Back to all internships
+      </a>
+      
+      <div style="background: var(--card); border-radius: 8px; padding: 2rem; margin-top: 1rem;">
+        <h1 style="font-size: 2rem; margin-bottom: 0.5rem; color: var(--primary);">
+          {jobData.job_title}
+        </h1>
+        
+        <div style="font-size: 1.25rem; font-weight: 500; margin-bottom: 1rem;">
+          {jobData.company_name}
+        </div>
+        
+        <div style="display: flex; flex-wrap: wrap; gap: 1rem; margin-bottom: 2rem; padding-bottom: 1rem; border-bottom: 1px solid var(--border);">
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            📍 <span>{jobData.city}, {jobData.province}</span>
+          </div>
+          
+          {jobData.application_deadline && (
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              ⏰ <span>Deadline: {jobData.application_deadline}</span>
+            </div>
+          )}
+          
+          <div style="display: flex; align-items: center; gap: 0.5rem;">
+            👥 <span>{jobData.quota} position{jobData.quota > 1 ? 's' : ''} available</span>
+          </div>
+          
+          {jobData.registered > 0 && (
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              📊 <span>{jobData.registered} applicant{jobData.registered > 1 ? 's' : ''}</span>
+            </div>
+          )}
+        </div>
+        
+        {jobData.recommended_degree && (
+          <div style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 0.5rem; color: var(--text);">Recommended Education</h3>
+            <p>{jobData.recommended_degree}</p>
+          </div>
+        )}
+        
+        {jobData.job_description && (
+          <div style="margin-bottom: 2rem;">
+            <h3 style="margin-bottom: 0.5rem; color: var(--text);">Job Description</h3>
+            <div style="white-space: pre-line; line-height: 1.8;">
+              {jobData.job_description}
+            </div>
+          </div>
+        )}
+        
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-top: 2rem;">
+          <div style="background: #f0f9ff; padding: 1rem; border-radius: 4px;">
+            <div style="font-weight: 500; margin-bottom: 0.5rem;">Government Agency</div>
+            <div>{jobData.government_agency || 'Not specified'}</div>
+          </div>
+          
+          <div style="background: #f0f9ff; padding: 1rem; border-radius: 4px;">
+            <div style="font-weight: 500; margin-bottom: 0.5rem;">Sub Agency</div>
+            <div>{jobData.sub_government_agency || 'Not specified'}</div>
+          </div>
+        </div>
+        
+        <div style="margin-top: 3rem; text-align: center;">
+          <a 
+            href={`https://maganghub.kemnaker.go.id/lowongan/view/${jobData.source_id}`}
+            target="_blank"
+            style="
+              display: inline-block;
+              background: var(--primary);
+              color: white;
+              padding: 1rem 2rem;
+              border-radius: 4px;
+              text-decoration: none;
+              font-weight: 500;
+              font-size: 1.1rem;
+            "
+          >
+            Apply on Official MagangHub Website →
+          </a>
+          <p style="margin-top: 0.5rem; color: var(--text-light); font-size: 0.9rem;">
+            You will be redirected to the official government portal
+          </p>
+        </div>
+      </div>
+    </div>
+  ) : (
+    <div style="text-align: center; padding: 4rem 0;">
+      <h2>Job Not Found</h2>
+      <p style="margin: 1rem 0; color: var(--text-light);">
+        The internship you're looking for doesn't exist or has been removed.
+      </p>
+      <a href="/" style="color: var(--primary); text-decoration: none;">
+        ← Back to all internships
+      </a>
+    </div>
+  )}
+</Layout>

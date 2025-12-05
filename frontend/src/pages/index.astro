@@ -1,0 +1,436 @@
+---
+import Layout from '../layouts/Layout.astro';
+import JobCard from '../components/JobCard.astro';
+import fs from 'fs';
+import path from 'path';
+
+// Load stats data at build time - read directly from file
+let statsData = { total_jobs: 0, total_companies: 0, total_quota: 0, total_registered: 0, top_companies: [] };
+let jobsData = [];
+
+try {
+  const statsPath = path.join(process.cwd(), 'public/data/stats.json');
+  if (fs.existsSync(statsPath)) {
+    const statsContent = fs.readFileSync(statsPath, 'utf-8');
+    statsData = JSON.parse(statsContent);
+  }
+} catch (error) {
+  console.error('Error loading stats:', error);
+}
+
+try {
+  const jobsPath = path.join(process.cwd(), 'public/data/jobs-index.json');
+  if (fs.existsSync(jobsPath)) {
+    const jobsContent = fs.readFileSync(jobsPath, 'utf-8');
+    jobsData = JSON.parse(jobsContent);
+  }
+} catch (error) {
+  console.error('Error loading jobs:', error);
+}
+
+// Get current date for filtering
+const today = new Date().toISOString().split('T')[0];
+
+// Filter jobs with deadlines in the future and map to readable property names
+const activeJobs = jobsData
+  .filter((job: {dl?: string}) => !job.dl || job.dl >= today)
+  .map((job: {i: string; t: string; c: string; l: string; p: string; d?: string; q: number; r?: number; dl?: string}) => ({
+    id: job.i,
+    title: job.t,
+    company: job.c,
+    location: job.l,
+    province: job.p || '', // Convert null/undefined to empty string
+    degree: job.d || undefined,
+    quota: job.q,
+    registered: job.r || 0,
+    deadline: job.dl
+  }));
+
+// Extract unique provinces (filter out empty strings and undefined)
+const uniqueProvinces: string[] = Array.from(new Set(activeJobs.map((job: any) => String(job.province || '')).filter((p: string) => p && p.trim() && p !== 'undefined'))).sort() as string[];
+
+// Helper to fix "BIsnis" -> "Bisnis" (Title Case)
+const toTitleCase = (str) => {
+  return str.toLowerCase().split(' ').map(word => 
+    word.charAt(0).toUpperCase() + word.slice(1)
+  ).join(' ');
+};
+
+// YOUR PRIORITY LIST
+// Majors containing these words will ALWAYS appear first
+const priorityKeywords = [
+  "Informatika", 
+  "Sistem Informasi", 
+  "Komputer", 
+  "Software", 
+  "Web", 
+  "Teknologi Informasi"
+];
+// 1. Clean and Count
+const degreeMap = new Map();
+
+activeJobs.forEach((job: any) => {
+  if (!job.degree) return;
+  
+  // Clean: Remove (Diploma), (Sarjana) etc BEFORE splitting commas
+  const cleanString = job.degree.replace(/\(.*?\)/g, '');
+  const tags = cleanString.split(',');
+  
+  tags.forEach((tag: string) => {
+    const cleanName = toTitleCase(tag.trim());
+    // Only add if it's a real word
+    if (cleanName && cleanName.length > 2) {
+      degreeMap.set(cleanName, (degreeMap.get(cleanName) || 0) + 1);
+    }
+  });
+});
+
+// 2. Sort: Priority Keywords First, then Count
+const sortedDegrees = Array.from(degreeMap.entries())
+  .map(([name, count]) => ({ name, count }))
+  .sort((a, b) => {
+    // Check if names contain priority keywords
+    const aIsPriority = priorityKeywords.some(k => a.name.includes(k));
+    const bIsPriority = priorityKeywords.some(k => b.name.includes(k));
+
+    // Logic: 
+    // If A is priority and B is not, A comes first (-1)
+    if (aIsPriority && !bIsPriority) return -1;
+    if (!aIsPriority && bIsPriority) return 1;
+    
+    // If both are priority (or both are not), sort by Count (High to Low)
+    return b.count - a.count; 
+  });
+
+const featuredJobs = activeJobs.slice(0, 12);
+---
+
+<Layout title="MagangHub v2 - Find Your Internship">
+  <div class="filter-bar">
+    <h2 style="margin-bottom: 1rem;">Find Your Perfect Internship</h2>
+    <div class="filter-row">
+      <input
+        type="text"
+        class="filter-input"
+        id="searchInput"
+        placeholder="Search by job title or company..."
+        onkeypress="if(event.key === 'Enter') filterJobs()"
+      />
+      <select class="filter-input" id="provinceSelect" onchange="filterJobs()">
+        <option value="">All Provinces</option>
+        {uniqueProvinces.filter((p: string) => p && p !== 'undefined').map((province: string) => (
+          <option value={province} selected={province === 'SULAWESI SELATAN'}>{province}</option>
+        ))}
+      </select>
+      <button class="filter-button" onclick="filterJobs()">Search</button>
+    </div>
+  </div>
+
+  <div 
+    id="degree-filter-wrapper" 
+    data-degrees={JSON.stringify(sortedDegrees)}
+    style="margin-top: 15px; padding: 15px; background: #fff; border: 1px solid #eee; border-radius: 8px;"
+  >
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+      <span style="font-weight: 600; font-size: 0.95rem;">Filter by Major:</span>
+      
+      <input 
+        type="text" 
+        id="degreeSearchInput" 
+        placeholder="Search other majors..." 
+        style="padding: 6px 10px; border: 1px solid #ddd; border-radius: 20px; font-size: 0.85rem; width: 200px;"
+      />
+    </div>
+
+    <div 
+      id="degreeCheckboxContainer" 
+      style="display: flex; flex-wrap: wrap; gap: 8px;"
+    >
+      </div>
+
+    <div style="margin-top: 10px; text-align: center;">
+      <button 
+        id="toggleDegreesBtn" 
+        style="background: none; border: none; color: #666; cursor: pointer; font-size: 0.85rem; font-weight: 500;"
+      >
+        ↓ Show all majors
+      </button>
+    </div>
+  </div>
+
+  <div class="job-grid" id="jobList">
+    {featuredJobs.map((job : any) => (
+      <JobCard job={job} />
+    ))}
+  </div>
+
+  <div class="text-center mt-3">
+    <a href="/all-jobs" class="btn">
+      View All {statsData.total_jobs.toLocaleString()} Internships →
+    </a>
+  </div>
+
+  <!-- Store jobs data for JavaScript -->
+  <div id="jobs-data" data-jobs={JSON.stringify(activeJobs)} style="display: none;"></div>
+
+  <script is:inline>
+    // Wait for DOM to be ready
+    (function() {
+      let allJobs = [];
+      
+      // Initialize - get jobs from the data attribute (already in readable format)
+      function initializeJobs() {
+        const jobsDataElement = document.getElementById('jobs-data');
+        if (jobsDataElement) {
+          try {
+            const jobsJson = jobsDataElement.getAttribute('data-jobs');
+            if (jobsJson) {
+              allJobs = JSON.parse(jobsJson);
+              console.log('Loaded', allJobs.length, 'jobs');
+            } else {
+              console.error('No jobs data found in data-jobs attribute');
+            }
+          } catch (e) {
+            console.error('Error parsing jobs data:', e);
+          }
+        } else {
+          console.error('Jobs data element not found');
+        }
+      }
+
+      // Filter jobs based on search and province
+      function filterJobs() {
+        if (!allJobs || allJobs.length === 0) {
+          console.warn('No jobs data available');
+          return;
+        }
+        
+        const searchInput = document.getElementById('searchInput');
+        const provinceSelect = document.getElementById('provinceSelect');
+
+        const checkedBoxes = document.querySelectorAll('.degree-checkbox:checked');
+        // Convert values to lowercase for case-insensitive comparison
+        const selectedDegrees = Array.from(checkedBoxes).map(cb => cb.value.toLowerCase());
+        
+        if (!searchInput || !provinceSelect) {
+          console.error('Filter inputs not found');
+          return;
+        }
+        
+        const searchValue = (searchInput.value || '').toLowerCase().trim();
+        const provinceValue = provinceSelect.value || '';
+        
+        console.log('Filtering with search:', searchValue, 'province:', provinceValue);
+        
+        const filtered = allJobs.filter(job => {
+          // Search filter
+          const matchesSearch = !searchValue || 
+            (job.title && job.title.toLowerCase().includes(searchValue)) || 
+            (job.company && job.company.toLowerCase().includes(searchValue));
+          
+          // Province filter
+          const matchesProvince = !provinceValue || (job.province && job.province === provinceValue);
+
+          const jobDegreeLower = (job.degree || '').toLowerCase();
+  
+          const matchesDegree = selectedDegrees.length === 0 || 
+                                selectedDegrees.some(tag => {
+                                  // We check if the job string contains the tag
+                                  // e.g. If tag is "administrasi", it will match "administrasi (diploma...)"
+                                  return jobDegreeLower.includes(tag);
+                                });
+          
+          return matchesSearch && matchesProvince && matchesDegree;
+        });
+        
+        console.log('Filtered to', filtered.length, 'jobs');
+        updateJobList(filtered);
+      }
+
+      // Update job list HTML
+      function updateJobList(jobs) {
+        const container = document.getElementById('jobList');
+        if (!container) {
+          console.error('Job list container not found');
+          return;
+        }
+        
+        if (jobs.length === 0) {
+          container.innerHTML = '<div class="loading" style="grid-column: 1 / -1; text-align: center; padding: 2rem;">No jobs found. Try different filters.</div>';
+          return;
+        }
+        
+        container.innerHTML = jobs.map(job => {
+          const applicants = job.registered || 0;
+          const quota = job.quota || 0;
+          return `
+            <a href="/jobs/${job.id}" class="job-link">
+              <div class="job-card">
+                <h3 class="job-title">${(job.title || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</h3>
+                <div class="job-company">${(job.company || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>
+                <div class="job-location">📍 ${(job.location || '')}, ${(job.province || '')}</div>
+                ${job.degree ? `<div class="job-degree">🎓 ${(job.degree || '').replace(/</g, '&lt;').replace(/>/g, '&gt;')}</div>` : ''}
+                <div class="job-meta">
+                  <span>👥 ${applicants} / ${quota} applying</span>
+                </div>
+              </div>
+            </a>
+          `;
+        }).join('');
+      }
+
+      // Make filterJobs available globally
+      window.filterJobs = filterJobs;
+
+      // Initialize when DOM is ready
+      if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', function() {
+          initializeJobs();
+          
+          // Handle URL parameters
+          const urlParams = new URLSearchParams(window.location.search);
+          const searchParam = urlParams.get('search');
+          const provinceParam = urlParams.get('province');
+          
+          const provinceSelect = document.getElementById('provinceSelect');
+          const searchInput = document.getElementById('searchInput');
+          
+          // Set default province to SULAWESI SELATAN if no URL parameter
+          if (!provinceParam && provinceSelect) {
+            provinceSelect.value = 'SULAWESI SELATAN';
+          } else if (provinceParam && provinceSelect) {
+            provinceSelect.value = provinceParam;
+          }
+          
+          if (searchParam && searchInput) {
+            searchInput.value = searchParam;
+          }
+          
+          // Filter on load if province is set (default or from URL) or if search is set
+          if (provinceSelect && (provinceSelect.value || searchParam)) {
+            filterJobs();
+          }
+        });
+      } else {
+        // DOM already loaded
+        initializeJobs();
+        
+        // Handle URL parameters
+        const urlParams = new URLSearchParams(window.location.search);
+        const searchParam = urlParams.get('search');
+        const provinceParam = urlParams.get('province');
+        
+        const provinceSelect = document.getElementById('provinceSelect');
+        const searchInput = document.getElementById('searchInput');
+        
+        // Set default province to SULAWESI SELATAN if no URL parameter
+        if (!provinceParam && provinceSelect) {
+          provinceSelect.value = 'SULAWESI SELATAN';
+        } else if (provinceParam && provinceSelect) {
+          provinceSelect.value = provinceParam;
+        }
+        
+        if (searchParam && searchInput) {
+          searchInput.value = searchParam;
+        }
+        
+        // Filter on load if province is set (default or from URL) or if search is set
+        if (provinceSelect && (provinceSelect.value || searchParam)) {
+          filterJobs();
+        }
+      }
+    })();
+
+    let degreeData = [];
+    let isDegreeExpanded = false;
+
+    // Initialize
+    (function initDegreeFilters() {
+      const wrapper = document.getElementById('degree-filter-wrapper');
+      if (!wrapper) return;
+
+      try {
+        degreeData = JSON.parse(wrapper.getAttribute('data-degrees'));
+      } catch (e) { return; }
+
+      const searchInput = document.getElementById('degreeSearchInput');
+      const toggleBtn = document.getElementById('toggleDegreesBtn');
+
+      // Render initial list
+      renderDegreeCheckboxes();
+
+      // Search Listener
+      searchInput.addEventListener('input', (e) => {
+        const keyword = e.target.value.toLowerCase();
+        renderDegreeCheckboxes(keyword);
+        // Hide "Show all" button when searching
+        toggleBtn.style.display = keyword ? 'none' : 'block';
+      });
+
+      // Toggle Listener
+      toggleBtn.addEventListener('click', () => {
+        isDegreeExpanded = !isDegreeExpanded;
+        toggleBtn.innerText = isDegreeExpanded ? '↑ Show Less' : '↓ Show all majors';
+        renderDegreeCheckboxes();
+      });
+    })();
+
+    function renderDegreeCheckboxes(searchKeyword = '') {
+      const container = document.getElementById('degreeCheckboxContainer');
+      container.innerHTML = ''; 
+
+      let visibleDegrees = degreeData;
+
+      // 1. If Searching: Show everything that matches
+      if (searchKeyword) {
+        visibleDegrees = degreeData.filter(d => d.name.toLowerCase().includes(searchKeyword));
+      } 
+      // 2. If Not Searching: Show Top 12 (Which are now your PRIORITY items) OR All if expanded
+      else if (!isDegreeExpanded) {
+        visibleDegrees = degreeData.slice(0, 12); // Adjust number as needed
+      }
+
+      if (visibleDegrees.length === 0) {
+        container.innerHTML = '<span style="color:#999; font-size:0.85rem; font-style:italic;">No majors found.</span>';
+        return;
+      }
+
+      // Create Tags
+      visibleDegrees.forEach(item => {
+        const label = document.createElement('label');
+        // Styling the "Pill"
+        label.style.cssText = `
+          display: inline-flex; align-items: center; gap: 6px; 
+          padding: 6px 12px; background: #f8f9fa; 
+          border: 1px solid #e9ecef; border-radius: 20px; 
+          font-size: 0.85rem; cursor: pointer; transition: all 0.2s;
+        `;
+        
+        // Checkbox HTML
+        label.innerHTML = `
+          <input type="checkbox" class="degree-checkbox" value="${item.name}" style="accent-color: #0d6efd;">
+          <span>${item.name}</span>
+          <span style="color:#adb5bd; font-size:0.75em; font-weight:600;">${item.count}</span>
+        `;
+
+        // Add click event for styling & filtering
+        const checkbox = label.querySelector('input');
+        checkbox.addEventListener('change', () => {
+            // Visual 'Active' State
+            if (checkbox.checked) {
+                label.style.background = '#e7f1ff';
+                label.style.borderColor = '#0d6efd';
+                label.style.color = '#0d6efd';
+            } else {
+                label.style.background = '#f8f9fa';
+                label.style.borderColor = '#e9ecef';
+                label.style.color = 'inherit';
+            }
+            // Call your main filter function
+            if (window.filterJobs) window.filterJobs(); 
+        });
+
+        container.appendChild(label);
+      });
+    }
+  </script>

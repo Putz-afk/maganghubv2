@@ -1,0 +1,123 @@
+---
+import Layout from '../layouts/Layout.astro';
+import JobCard from '../components/JobCard.astro';
+import fs from 'fs';
+import path from 'path';
+
+// Load data directly from files at build time
+let jobsData = [];
+let statsData = { total_jobs: 0 };
+
+try {
+  const jobsPath = path.join(process.cwd(), 'public/data/jobs-index.json');
+  if (fs.existsSync(jobsPath)) {
+    const jobsContent = fs.readFileSync(jobsPath, 'utf-8');
+    jobsData = JSON.parse(jobsContent);
+  }
+} catch (error) {
+  console.error('Error loading jobs:', error);
+}
+
+try {
+  const statsPath = path.join(process.cwd(), 'public/data/stats.json');
+  if (fs.existsSync(statsPath)) {
+    const statsContent = fs.readFileSync(statsPath, 'utf-8');
+    statsData = JSON.parse(statsContent);
+  }
+} catch (error) {
+  console.error('Error loading stats:', error);
+}
+
+// Map to readable names
+const jobs = jobsData.map((job: {i: string; t: string; c: string; l: string; p: string; d?: string; q: number; r?: number; dl?: string}) => ({
+  id: job.i,
+  title: job.t,
+  company: job.c,
+  location: job.l,
+  province: job.p,
+  degree: job.d || undefined,
+  quota: job.q,
+  registered: job.r || 0,
+  deadline: job.dl
+}));
+
+const itemsPerPage = 50;
+const initialJobs = jobs.slice(0, itemsPerPage);
+const remainingJobs = jobs.slice(itemsPerPage);
+---
+
+<Layout title="All Internships - MagangHub v2">
+  <h1>All Internships ({statsData.total_jobs.toLocaleString()})</h1>
+  <p style="color: var(--text-light); margin-bottom: 2rem;">
+    Browse all available internship positions across Indonesia
+  </p>
+  
+  <div class="job-grid" id="jobContainer">
+    {initialJobs.map(job => (
+      <JobCard job={job} />
+    ))}
+  </div>
+  
+  {remainingJobs.length > 0 && (
+    <div class="text-center mt-3">
+      <p style="color: var(--text-light); margin-bottom: 1rem;">
+        Showing {initialJobs.length} of {jobs.length} internships
+      </p>
+      <button
+        class="btn"
+        id="loadMoreBtn"
+        onclick="loadMoreJobs()"
+      >
+        Load More Internships
+      </button>
+    </div>
+  )}
+
+  <script>
+    // Data for pagination
+    const remainingJobs = JSON.parse(document.querySelector('[data-remaining]')?.dataset.remaining || '[]');
+    let currentIndex = 0;
+    const batchSize = 20;
+
+    function loadMoreJobs() {
+      const container = document.getElementById('jobContainer');
+      const nextBatch = remainingJobs.slice(currentIndex, currentIndex + batchSize);
+      
+      if (nextBatch.length === 0) {
+        document.getElementById('loadMoreBtn').style.display = 'none';
+        return;
+      }
+
+      nextBatch.forEach(job => {
+        const link = document.createElement('a');
+        link.href = `/jobs/${job.id}`;
+        link.className = 'job-link';
+        
+        link.innerHTML = `
+          <div class="job-card">
+            <h3 class="job-title">${job.title}</h3>
+            <div class="job-company">${job.company}</div>
+            <div class="job-location">📍 ${job.location}, ${job.province}</div>
+            ${job.degree ? `<div class="job-degree">🎓 ${job.degree}</div>` : ''}
+            <div class="job-meta">
+              <span>👥 ${job.quota} position${job.quota > 1 ? 's' : ''}</span>
+              <span>⏰ ${job.deadline || 'No deadline'}</span>
+            </div>
+          </div>
+        `;
+        
+        container.appendChild(link);
+      });
+
+      currentIndex += batchSize;
+
+      // Hide button if all jobs loaded
+      if (currentIndex >= remainingJobs.length) {
+        document.getElementById('loadMoreBtn').style.display = 'none';
+      }
+    }
+  </script>
+
+  <!-- Store remaining jobs for pagination -->
+  <div data-remaining={JSON.stringify(remainingJobs)} style="display: none;"></div>
+</Layout>
