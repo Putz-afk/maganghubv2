@@ -33,7 +33,7 @@ const today = new Date().toISOString().split('T')[0];
 
 // Filter jobs with deadlines in the future and map to readable property names
 const activeJobs = jobsData
-  .filter((job: {dl?: string}) => !job.dl || job.dl >= today)
+  // .filter((job: {dl?: string}) => !job.dl || job.dl >= today)
   .map((job: {i: string; t: string; c: string; l: string; p: string; d?: string; q: number; r?: number; dl?: string}) => ({
     id: job.i,
     title: job.t,
